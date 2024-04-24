@@ -1,0 +1,120 @@
+#include <TinyGPS++.h>
+#include <SoftwareSerial.h>
+
+#define GPS_RX_PIN 16 // Connect GPS TX to this pin
+#define GPS_TX_PIN 17 // Connect GPS RX to this pin
+const int trigPin = 2; // Change trigPin to GPIO 2
+const int echoPin = 4; // Change echoPin to GPIO 4
+const int MQ3 = 34; // Change MQ3 pin to GPIO 34
+const int Sober = 100; // Example threshold values, adjust according to your sensor
+const int Drunk = 500; // Example threshold values, adjust according to your sensor
+const int ledPin = 2; // Example LED pin, adjust according to your setup
+
+// Create a SoftwareSerial object to communicate with the GPS module
+SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);
+
+// Define a TinyGPS++ object to parse NMEA data
+TinyGPSPlus gps;
+
+void setup() {
+  Serial.begin(9600); // Starts the serial communication
+  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
+  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
+  pinMode(MQ3, INPUT); // Sets the MQ3 pin as an Input
+  pinMode(ledPin, OUTPUT); // Sets the LED pin as an Output
+
+  // Initialize serial communication for debugging
+  Serial.begin(9600); 
+  // Initialize serial communication with GPS module
+  gpsSerial.begin(9600); 
+}
+
+void loop() {
+  // Ultrasonic sensor code
+  long t = 0, h = 0, hp = 0;
+
+  // Clear the trigPin
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  // Sets the trigPin on HIGH state for 10 microseconds
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  
+  // Waiting for pulse
+  t = pulseIn(echoPin, HIGH);
+  
+  // Calculating distance 
+  h = t / 58;
+  h = h - 6;  // offset correction
+  h = 50 - h;  // water height, 0 - 50 cm
+  hp = 2 * h;  // distance in %, 0-100 %
+  
+  // Sending to computer
+  Serial.print("Fuel Level(%): ");
+  Serial.println(hp);
+
+  // MQ3 sensor code
+  float sensorValue = analogRead(MQ3); // Read analog input pin
+  Serial.print("MQ3 Sensor Value: ");
+  Serial.println(sensorValue);
+
+  if (sensorValue < Sober) {
+    Serial.println("Status: Sober");
+  } else if (sensorValue >= Sober && sensorValue < Drunk) {
+    Serial.println("Status: Drinking but within legal limits");
+  } else {
+    Serial.println("Status: DRUNK");
+  }
+
+  unsigned int outputValue = map(sensorValue, 0, 4095, 0, 255); // Map sensor value to LED brightness, considering ESP32 ADC range
+
+  if (sensorValue > 700) {
+    analogWrite(ledPin, outputValue);
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+
+  // Read data from GPS module
+  while (gpsSerial.available() > 0) {
+    if (gps.encode(gpsSerial.read())) {
+      if (gps.location.isValid()) {
+        // Print latitude and longitude
+        Serial.print("Latitude: ");
+        Serial.println(gps.location.lat(), 6);
+        Serial.print("Longitude: ");
+        Serial.println(gps.location.lng(), 6);
+      }
+
+      if (gps.date.isValid()) {
+        // Print date
+        Serial.print("Date: ");
+        Serial.print(gps.date.year());
+        Serial.print("/");
+        Serial.print(gps.date.month());
+        Serial.print("/");
+        Serial.println(gps.date.day());
+      }
+
+      if (gps.time.isValid()) {
+        // Print time
+        Serial.print("Time: ");
+        Serial.print(gps.time.hour());
+        Serial.print(":");
+        if (gps.time.minute() < 10) Serial.print("0");
+        Serial.print(gps.time.minute());
+        Serial.print(":");
+        if (gps.time.second() < 10) Serial.print("0");
+        Serial.println(gps.time.second());
+      }
+
+      if (gps.speed.isValid()) {
+        // Print speed
+        Serial.print("Speed (km/h): ");
+        Serial.println(gps.speed.kmph());
+      }
+    }
+  }
+
+  delay(2500);
+}
